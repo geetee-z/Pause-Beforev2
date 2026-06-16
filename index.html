@@ -90,11 +90,25 @@ function freshState(){return {playerName:"",character:"",completed:{},traits:{op
 function cleanName(n){return (n||"Player").trim().replace(/\s+/g," ").slice(0,40)}
 function playerKey(name){return "pauseStoryPlayer_" + cleanName(name).toLowerCase().replace(/[^a-z0-9]+/g,"_")}
 function getAdminUnlocked(){try{const saved=JSON.parse(localStorage.getItem("pauseStoryAdminUnlocked")||"null"); if(Array.isArray(saved)&&saved.length) return saved;}catch(e){} return DEFAULT_UNLOCKED_MONTHS;}
+
+function recalculateTraitsFromCompleted(){
+  const freshTraits=freshState().traits;
+  const completed=state.completed||{};
+  CHAPTERS.forEach(ch=>{
+    const record=completed[ch.id];
+    if(!record || !record.choice) return;
+    const choice=record.choice==='A'?ch.choiceA:ch.choiceB;
+    Object.entries(choice.impact||{}).forEach(([k,v])=>{
+      freshTraits[k]=(freshTraits[k]||0)+v;
+    });
+  });
+  state.traits=freshTraits;
+}
 function isAdminUnlocked(id){return getAdminUnlocked().includes(id)}
 function isCompleted(idx){return !!state.completed[CHAPTERS[idx].id]}
 function isUnlocked(idx){return isAdminUnlocked(CHAPTERS[idx].id) && (idx===0 || isCompleted(idx-1));}
 function saveState(){if(!state.playerName)return; localStorage.setItem(playerKey(state.playerName),JSON.stringify(state)); localStorage.setItem("pauseStoryActivePlayer",state.playerName); syncLeaderboard();}
-function loadState(name){const saved=localStorage.getItem(playerKey(name)); if(saved){try{state={...freshState(),...JSON.parse(saved)}; state.traits={...freshState().traits,...(state.traits||{})}; state.completed=state.completed||{}; state.seenUnlocks=state.seenUnlocks||[]; return;}catch(e){}} state=freshState(); state.playerName=cleanName(name);}
+function loadState(name){const saved=localStorage.getItem(playerKey(name)); if(saved){try{state={...freshState(),...JSON.parse(saved)}; state.completed=state.completed||{}; state.seenUnlocks=state.seenUnlocks||[]; recalculateTraitsFromCompleted(); return;}catch(e){}} state=freshState(); state.playerName=cleanName(name);}
 function init(){if(IS_ADMIN)document.querySelectorAll('.admin-only').forEach(e=>e.classList.remove('hidden')); const active=localStorage.getItem("pauseStoryActivePlayer"); if(active){loadState(active); showApp();} renderAll(); checkUnlockToast();}
 function enterGame(){const name=cleanName(document.getElementById('nameInput').value); if(!name){alert('Please enter your name.');return;} loadState(name); saveState(); showApp(); renderAll(); checkUnlockToast();}
 function showApp(){document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); document.getElementById('welcomePill').textContent='Welcome, '+state.playerName+'!'; if(!state.character){document.getElementById('characterSelect').classList.remove('hidden'); document.getElementById('hub').classList.add('hidden');}else{document.getElementById('characterSelect').classList.add('hidden'); document.getElementById('hub').classList.remove('hidden');}}
@@ -107,7 +121,7 @@ function getJourneyQuote(){const c=Object.keys(state.completed).length; if(c===0
 function openChapter(idx){if(!state.character){alert('Choose Casey or Charlie first.');return;} if(isCompleted(idx)){viewCompleted(idx);return;} if(!isAdminUnlocked(CHAPTERS[idx].id)){alert('🔒 This chapter has not been unlocked by admin yet.');return;} if(!isUnlocked(idx)){alert('🔒 Complete the previous chapter first.');return;} state.currentChapter=idx; state.currentChoice=null; document.getElementById('hub').classList.add('hidden'); document.getElementById('storyView').classList.remove('hidden'); renderChapter();}
 function renderChapter(){const ch=CHAPTERS[state.currentChapter]; document.getElementById('storyView').innerHTML=`<div class="story-head"><button class="btn btn-soft" onclick="backToHub()">← Back</button><div class="small">${ch.month} • ${ch.trait}</div></div><div class="story-box"><img src="${ch.image}" alt="${ch.title}"><div><div class="scene-title">${ch.title}</div><div class="scene-text">${ch.intro}</div></div></div><div class="choice-grid"><button class="choice" onclick="chooseOption('A')"><b>A. ${ch.choiceA.label}</b><span class="small">Choose this path</span></button><button class="choice" onclick="chooseOption('B')"><b>B. ${ch.choiceB.label}</b><span class="small">Choose this path</span></button></div>`;}
 function chooseOption(letter){state.currentChoice=letter; const ch=CHAPTERS[state.currentChapter]; const choice=letter==='A'?ch.choiceA:ch.choiceB; const outcome=letter==='A'?ch.outcomeA:ch.outcomeB; document.getElementById('storyView').innerHTML=`<div class="story-head"><button class="btn btn-soft" onclick="renderChapter()">← Change Choice</button><div class="small">${ch.month} • ${ch.trait}</div></div><div class="story-box"><img src="${ch.image}" alt="${ch.title}"><div><div class="scene-title">Your choice: ${letter}</div><div class="scene-text"><b>${choice.label}</b><br><br>${outcome}</div></div></div><div class="feedback ${choice.tone==='bad'?'bad':''}"><b>Rationale</b><br>${choice.rationale}</div><button class="btn btn-green" onclick="completeChapter()" style="width:100%;margin-top:18px">Complete Chapter + Earn Stamp →</button>`; playSfx(choice.tone==='bad'?'oops':'good');}
-function completeChapter(){const idx=state.currentChapter; const ch=CHAPTERS[idx]; const letter=state.currentChoice; if(!letter)return; const choice=letter==='A'?ch.choiceA:ch.choiceB; Object.entries(choice.impact||{}).forEach(([k,v])=>state.traits[k]=(state.traits[k]||0)+v); state.completed[ch.id]={choice:letter,completedAt:new Date().toISOString()}; saveState(); renderAll(); backToHub(); showStamp(ch,idx);}
+function completeChapter(){const idx=state.currentChapter; const ch=CHAPTERS[idx]; const letter=state.currentChoice; if(!letter)return; state.completed[ch.id]={choice:letter,completedAt:new Date().toISOString()}; recalculateTraitsFromCompleted(); saveState(); renderAll(); backToHub(); showStamp(ch,idx);}
 function viewCompleted(idx){const ch=CHAPTERS[idx]; const record=state.completed[ch.id]; const selected=record.choice; const chosen=selected==='A'?ch.choiceA:ch.choiceB; const outcome=selected==='A'?ch.outcomeA:ch.outcomeB; document.getElementById('hub').classList.add('hidden'); document.getElementById('storyView').classList.remove('hidden'); document.getElementById('storyView').innerHTML=`<div class="story-head"><button class="btn btn-soft" onclick="backToHub()">← Back</button><div class="small">${ch.month} completed</div></div><div class="story-box"><img src="${ch.image}" alt="${ch.title}"><div><div class="scene-title">${ch.title}</div><div class="scene-text">${ch.intro}</div></div></div><h3 style="margin-top:18px">Review your choice and the alternative</h3><div class="review-grid">${reviewBlock('A',ch.choiceA,selected==='A')}${reviewBlock('B',ch.choiceB,selected==='B')}</div><div class="feedback ${chosen.tone==='bad'?'bad':''}"><b>Your outcome</b><br>${outcome}<br><br><b>Why it matters</b><br>${chosen.rationale}</div>`;}
 function reviewBlock(letter,choice,selected){return `<div class="review-choice ${selected?'selected':'not-selected'}"><h3>${selected?'✅ Your Choice':'💭 Other Choice'} ${letter}</h3><p><b>${choice.label}</b></p><p class="small" style="margin-top:10px">${choice.rationale}</p></div>`}
 function backToHub(){document.getElementById('storyView').classList.add('hidden'); document.getElementById('hub').classList.remove('hidden'); state.currentChapter=null; state.currentChoice=null; renderAll();}
@@ -126,25 +140,25 @@ function unlockAllChapters(){
 function clearAllData(){
   if(!IS_ADMIN)return;
   const confirmed=confirm(
-    'Clear ALL Pause Before game data on this browser?\n\n'+
-    'This will remove:\n'+
-    '• All player progress\n'+
-    '• Journey scores\n'+
-    '• Stamps\n'+
-    '• Leaderboard data\n'+
-    '• Admin unlock settings\n\n'+
-    'This cannot be undone.'
+    'Clear ALL game data on THIS browser?\n\n'+
+    'This will remove player progress, stamps, growth path, leaderboard and admin unlock settings.\n\n'+
+    "Note: It only clears records on this browser/device, not other testers' devices."
   );
   if(!confirmed)return;
-  Object.keys(localStorage).forEach(key=>{
-    if(key.startsWith('pauseStory')||key.startsWith('pauseGame')){
-      localStorage.removeItem(key);
-    }
-  });
-  sessionStorage.clear();
+
+  try{
+    stopMusic();
+    localStorage.clear();
+    sessionStorage.clear();
+  }catch(e){
+    // fallback if browser blocks clear()
+    Object.keys(localStorage).forEach(key=>localStorage.removeItem(key));
+    Object.keys(sessionStorage).forEach(key=>sessionStorage.removeItem(key));
+  }
+
   state=freshState();
   alert('✅ All game data has been cleared from this browser.');
-  window.location.href=window.location.pathname+'?admin=1&reset='+Date.now();
+  window.location.replace(location.origin + location.pathname + '?admin=1&reset=' + Date.now());
 }
 function updateAnalytics(){const box=document.getElementById('analyticsBox'); if(!box)return; const players=JSON.parse(localStorage.getItem('pauseStoryPlayers')||'[]'); const completedCounts=CHAPTERS.map(ch=>players.filter(p=>{try{const d=JSON.parse(localStorage.getItem(playerKey(p.name))||'{}'); return d.completed&&d.completed[ch.id];}catch(e){return false}}).length); box.innerHTML=`<div class="card" style="margin:0"><h3>${players.length}</h3><p class="small">Participants</p></div><div class="card" style="margin:0"><h3>${players.filter(p=>p.completed>0).length}</h3><p class="small">Started at least 1 chapter</p></div>`+CHAPTERS.map((ch,i)=>`<div class="card" style="margin:0"><h3>${completedCounts[i]}</h3><p class="small">Completed ${ch.month}</p></div>`).join('');}
 function checkUnlockToast(){if(!state.playerName || !state.character)return; const seen=new Set(state.seenUnlocks||[]); const next=CHAPTERS.find((ch,i)=>isUnlocked(i)&&!isCompleted(i)&&!seen.has(ch.id)); if(next){seen.add(next.id); state.seenUnlocks=[...seen]; saveState(); showToast(`🎊 New chapter available: ${next.month} • ${next.title}`); playSfx('unlock');}}
@@ -154,7 +168,7 @@ function getEndingTitle(){const vals=Object.values(state.traits); const total=va
 let audioCtx=null, musicTimer=null;
 function toggleMusic(){state.music=!state.music; saveState(); updateMusicButton(); state.music?startMusic():stopMusic();}
 function updateMusicButton(){const b=document.getElementById('musicBtn'); if(!b)return; b.textContent=state.music?'🔊 Music On':'🔇 Music Off'; b.classList.toggle('on',!!state.music);}
-function startMusic(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); stopMusic(); const notes=[261.63,329.63,392,329.63,293.66,349.23,440,349.23]; let i=0; musicTimer=setInterval(()=>{playTone(notes[i%notes.length],0.08,0.045); i++;},420);}catch(e){}}
+function startMusic(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); stopMusic(); const notes=[261.63,329.63,392.00,523.25,392.00,329.63,293.66,261.63]; let i=0; musicTimer=setInterval(()=>{playTone(notes[i%notes.length],0.25,0.03); i++;},650);}catch(e){}}
 function stopMusic(){if(musicTimer){clearInterval(musicTimer); musicTimer=null;}}
 function playSfx(type){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const map={good:[523,659],oops:[220,180],stamp:[523,659,784],unlock:[392,523,659]}; (map[type]||map.good).forEach((n,i)=>setTimeout(()=>playTone(n,0.11,0.075),i*110));}catch(e){}}
 function playTone(freq,dur,vol){if(!audioCtx)return; const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='triangle'; o.frequency.value=freq; g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination); const t=audioCtx.currentTime; g.gain.exponentialRampToValueAtTime(vol,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.03);}

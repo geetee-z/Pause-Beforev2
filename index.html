@@ -59,7 +59,7 @@
     <section id="leader" class="tabpage hidden"><div class="card"><h2>🌱 Collaboration Journey Board</h2><p class="small">Names only, so the focus stays on learning rather than chasing points.</p><div id="leaderList" style="margin-top:14px"></div></div></section>
 
     <section id="admin" class="tabpage hidden">
-      <div class="card"><h2>🔐 Admin Control Center</h2><p class="small">Add <b>?admin=1</b> to your URL to see this tab. Example: <b>index.html?admin=1</b></p><div class="admin-note">Unlock the month only when you are ready to release it. Player progress will stay saved in the same browser.</div><h3 style="margin-top:18px">Unlock Months</h3><div class="admin-grid" id="adminUnlocks"></div><button class="btn btn-green" onclick="saveAdminUnlocks()" style="margin-top:14px">Save Unlocks</button><button class="btn btn-red" onclick="clearAllData()" style="margin-top:14px">Clear All Local Game Data</button></div>
+      <div class="card"><h2>🔐 Admin Control Center</h2><p class="small">Add <b>?admin=1</b> to your URL to see this tab. Example: <b>index.html?admin=1</b></p><div class="admin-note">Unlock the month only when you are ready to release it. Player progress will stay saved in the same browser.</div><h3 style="margin-top:18px">Unlock Months</h3><div class="admin-grid" id="adminUnlocks"></div><button class="btn btn-green" onclick="saveAdminUnlocks()" style="margin-top:14px">Save Unlocks</button><button class="btn btn-soft" onclick="unlockAllChapters()" style="margin-top:14px">🔓 Unlock All Chapters</button><button class="btn btn-red" onclick="clearAllData()" style="margin-top:14px">🗑 Reset All Game Data (This Browser)</button></div>
       <div class="card"><h2>📊 Analytics</h2><div class="two-col" id="analyticsBox"></div></div>
     </section>
   </div>
@@ -117,7 +117,35 @@ function syncLeaderboard(){let players=JSON.parse(localStorage.getItem('pauseSto
 function renderLeader(){const list=document.getElementById('leaderList'); if(!list)return; const players=JSON.parse(localStorage.getItem('pauseStoryPlayers')||'[]').sort((a,b)=>(b.completed-a.completed)||a.name.localeCompare(b.name)).slice(0,10); list.innerHTML=players.length?players.map((p,i)=>`<div class="leader-row"><div class="leader-rank">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</div><div class="leader-name">${escapeHtml(p.name)}${p.name===state.playerName?' (you)':''}</div></div>`).join(''):'<p class="small">No players yet.</p>';}
 function renderAdmin(){if(!IS_ADMIN)return; const unlocked=getAdminUnlocked(); const box=document.getElementById('adminUnlocks'); if(box)box.innerHTML=CHAPTERS.map(ch=>`<label class="check"><input type="checkbox" value="${ch.id}" ${unlocked.includes(ch.id)?'checked':''}> ${ch.month} • ${ch.title}</label>`).join(''); updateAnalytics();}
 function saveAdminUnlocks(){const checked=[...document.querySelectorAll('#adminUnlocks input:checked')].map(i=>i.value); if(!checked.includes('JUN'))checked.unshift('JUN'); localStorage.setItem('pauseStoryAdminUnlocked',JSON.stringify(checked)); showToast('Unlocks saved.'); renderAll();}
-function clearAllData(){if(!confirm('Clear all local game data on this browser?'))return; localStorage.clear(); location.reload();}
+function unlockAllChapters(){
+  if(!IS_ADMIN)return;
+  localStorage.setItem('pauseStoryAdminUnlocked',JSON.stringify(['JUN','JUL','AUG','SEP','OCT','DEC']));
+  renderAll();
+  showToast('✅ All chapters unlocked for testing.');
+}
+function clearAllData(){
+  if(!IS_ADMIN)return;
+  const confirmed=confirm(
+    'Clear ALL Pause Before game data on this browser?\n\n'+
+    'This will remove:\n'+
+    '• All player progress\n'+
+    '• Journey scores\n'+
+    '• Stamps\n'+
+    '• Leaderboard data\n'+
+    '• Admin unlock settings\n\n'+
+    'This cannot be undone.'
+  );
+  if(!confirmed)return;
+  Object.keys(localStorage).forEach(key=>{
+    if(key.startsWith('pauseStory')||key.startsWith('pauseGame')){
+      localStorage.removeItem(key);
+    }
+  });
+  sessionStorage.clear();
+  state=freshState();
+  alert('✅ All game data has been cleared from this browser.');
+  window.location.href=window.location.pathname+'?admin=1&reset='+Date.now();
+}
 function updateAnalytics(){const box=document.getElementById('analyticsBox'); if(!box)return; const players=JSON.parse(localStorage.getItem('pauseStoryPlayers')||'[]'); const completedCounts=CHAPTERS.map(ch=>players.filter(p=>{try{const d=JSON.parse(localStorage.getItem(playerKey(p.name))||'{}'); return d.completed&&d.completed[ch.id];}catch(e){return false}}).length); box.innerHTML=`<div class="card" style="margin:0"><h3>${players.length}</h3><p class="small">Participants</p></div><div class="card" style="margin:0"><h3>${players.filter(p=>p.completed>0).length}</h3><p class="small">Started at least 1 chapter</p></div>`+CHAPTERS.map((ch,i)=>`<div class="card" style="margin:0"><h3>${completedCounts[i]}</h3><p class="small">Completed ${ch.month}</p></div>`).join('');}
 function checkUnlockToast(){if(!state.playerName || !state.character)return; const seen=new Set(state.seenUnlocks||[]); const next=CHAPTERS.find((ch,i)=>isUnlocked(i)&&!isCompleted(i)&&!seen.has(ch.id)); if(next){seen.add(next.id); state.seenUnlocks=[...seen]; saveState(); showToast(`🎊 New chapter available: ${next.month} • ${next.title}`); playSfx('unlock');}}
 function showToast(msg){const t=document.getElementById('toast'); t.innerHTML=msg; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),3500);}
@@ -129,7 +157,7 @@ function updateMusicButton(){const b=document.getElementById('musicBtn'); if(!b)
 function startMusic(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); stopMusic(); const notes=[261.63,329.63,392,329.63,293.66,349.23,440,349.23]; let i=0; musicTimer=setInterval(()=>{playTone(notes[i%notes.length],0.08,0.045); i++;},420);}catch(e){}}
 function stopMusic(){if(musicTimer){clearInterval(musicTimer); musicTimer=null;}}
 function playSfx(type){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const map={good:[523,659],oops:[220,180],stamp:[523,659,784],unlock:[392,523,659]}; (map[type]||map.good).forEach((n,i)=>setTimeout(()=>playTone(n,0.11,0.075),i*110));}catch(e){}}
-function playTone(freq,dur,vol){if(!audioCtx)return; const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination); const t=audioCtx.currentTime; g.gain.exponentialRampToValueAtTime(vol,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.03);}
+function playTone(freq,dur,vol){if(!audioCtx)return; const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='triangle'; o.frequency.value=freq; g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination); const t=audioCtx.currentTime; g.gain.exponentialRampToValueAtTime(vol,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.03);}
 window.addEventListener('beforeunload',()=>{if(state&&state.playerName)saveState();});
 init();
 </script>

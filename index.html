@@ -197,19 +197,27 @@ function trackEvent(type,extra={}){
 
   const t=state.traits||{};
   const simplePayload={
-    playerName:state.playerName||'',
-    character:state.character||'',
-    monthCompleted:extra.month||extra.chapter||'',
-    completedMonths:Object.keys(state.completed||{}).join(','),
-    growthPath:`Open-mindedness ${t.open||0}; Curiosity ${t.curiosity||0}; Trust ${t.trust||0}; Respect ${t.respect||0}; Appreciation ${t.appreciation||0}`,
-    openMindedness:t.open||0,
-    curiosity:t.curiosity||0,
-    trust:t.trust||0,
-    respect:t.respect||0,
-    appreciation:t.appreciation||0,
-    timestamp:new Date().toISOString(),
-    gameVersion:GAME_VERSION
-  };
+  playerName:state.playerName||"",
+  character:state.character||"",
+  monthCompleted:extra.month||extra.chapter||"",
+  completedMonths:Object.keys(state.completed||{}).join(","),
+
+  growthPath:[
+    t.open != null && t.open > 0 ? `🌈 Open-mindedness ${t.open}` : null,
+    t.curiosity != null && t.curiosity > 0 ? `🔍 Curiosity ${t.curiosity}` : null,
+    t.trust != null && t.trust > 0 ? `🤝 Trust ${t.trust}` : null,
+    t.respect != null && t.respect > 0 ? `⭐ Respect ${t.respect}` : null,
+    t.appreciation != null && t.appreciation > 0 ? `💛 Appreciation ${t.appreciation}` : null
+  ].filter(Boolean).join("; "),
+
+  openMindedness:t.open ?? "",
+  curiosity:t.curiosity ?? "",
+  trust:t.trust ?? "",
+  respect:t.respect ?? "",
+  appreciation:t.appreciation ?? "",
+
+  timestamp:new Date().toISOString(),
+};
 
   try{
     fetch(ANALYTICS_ENDPOINT,{
